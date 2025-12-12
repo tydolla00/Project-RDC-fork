@@ -10,7 +10,7 @@ import { Footer } from "@/components/footer";
 import { Toaster } from "@/components/ui/sonner";
 import { DbSwitchNotifier } from "@/components/DbSwitchNotifier";
 import { CSPostHogProvider } from "@/posthog/client-init";
-import { SessionProvider } from "next-auth/react";
+// import { SessionProvider } from "next-auth/react";
 import PostHogIdentify from "@/posthog/PosthogIdentify";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
