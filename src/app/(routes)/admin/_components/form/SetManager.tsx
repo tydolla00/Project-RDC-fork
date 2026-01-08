@@ -129,67 +129,104 @@ const SetManager = () => {
       assignments: Map<number, BulkProcessingResult[]>,
       newSetIds: number[],
     ) => {
-      const currentSets = getValues("sets");
+      console.log("handleBulkReviewConfirm called", {
+        assignments: Array.from(assignments.entries()),
+        newSetIds,
+      });
+
+      const currentSets = getValues("sets") || [];
       let updatedHighestSetId = highestSetId;
 
-      // First, create any new sets that were added during review
+      // Build new sets with their matches already included
+      const newSetsToAppend: FormValues["sets"] = [];
+
+      // Process new sets - create them with their matches
       newSetIds.forEach((newSetId) => {
-        // Check if this set already exists
         const existingSetIndex = currentSets.findIndex(
           (s) => s.setId === newSetId,
         );
         if (existingSetIndex === -1) {
-          append({
+          // Get the matches for this new set
+          const resultsForSet = assignments.get(newSetId) || [];
+          const matchesForSet = resultsForSet
+            .map(convertResultToMatch)
+            .filter((m): m is Match => m !== null);
+
+          console.log(`Creating new set ${newSetId} with ${matchesForSet.length} matches`);
+
+          newSetsToAppend.push({
             setId: newSetId,
-            matches: [],
+            matches: matchesForSet,
             setWinners: [],
           });
+
           if (newSetId > updatedHighestSetId) {
             updatedHighestSetId = newSetId;
           }
         }
       });
 
+      // Update existing sets with their new matches
+      assignments.forEach((results, setId) => {
+        // Skip if this is a new set (already handled above)
+        if (newSetIds.includes(setId)) return;
+
+        const setIndex = currentSets.findIndex((s) => s.setId === setId);
+        if (setIndex === -1) {
+          console.warn(`Set ${setId} not found in current sets`);
+          return;
+        }
+
+        const matches = results
+          .map(convertResultToMatch)
+          .filter((m): m is Match => m !== null);
+
+        console.log(`Adding ${matches.length} matches to existing set ${setId} at index ${setIndex}`);
+
+        const currentMatches = getValues(`sets.${setIndex}.matches`) || [];
+        setValue(`sets.${setIndex}.matches`, [...currentMatches, ...matches], {
+          shouldDirty: true,
+        });
+      });
+
+      // Append all new sets at once
+      if (newSetsToAppend.length > 0) {
+        console.log(`Appending ${newSetsToAppend.length} new sets`);
+        newSetsToAppend.forEach((newSet) => {
+          append(newSet);
+        });
+      }
+
       // Update the highest set ID
       setHighestSetId(updatedHighestSetId);
 
-      // Now add matches to the appropriate sets
-      // We need to get the updated sets after appending
-      setTimeout(() => {
-        const updatedSets = getValues("sets");
-
-        assignments.forEach((results, setId) => {
-          const setIndex = updatedSets.findIndex((s) => s.setId === setId);
-          if (setIndex === -1) return;
-
-          const matches = results
-            .map(convertResultToMatch)
-            .filter((m): m is Match => m !== null);
-
-          const currentMatches = getValues(`sets.${setIndex}.matches`) || [];
-          setValue(`sets.${setIndex}.matches`, [...currentMatches, ...matches]);
+      // Update openSets to show all modified sets
+      const totalSets = currentSets.length + newSetsToAppend.length;
+      setOpenSets((prev) => {
+        const newOpenSets = Array(totalSets).fill(false);
+        // Keep existing open states
+        prev.forEach((isOpen, i) => {
+          if (i < newOpenSets.length) newOpenSets[i] = isOpen;
         });
-
-        // Update openSets to show all modified sets
-        setOpenSets((prev) => {
-          const newOpenSets = [...prev];
-          assignments.forEach((_, setId) => {
-            const updatedSets = getValues("sets");
-            const setIndex = updatedSets.findIndex((s) => s.setId === setId);
-            if (setIndex !== -1 && setIndex < newOpenSets.length) {
-              newOpenSets[setIndex] = true;
-            }
-          });
-          // Ensure array length matches sets
-          while (newOpenSets.length < getValues("sets").length) {
-            newOpenSets.push(true);
+        // Open sets that received new matches
+        assignments.forEach((_, setId) => {
+          // For existing sets
+          const existingIndex = currentSets.findIndex((s) => s.setId === setId);
+          if (existingIndex !== -1) {
+            newOpenSets[existingIndex] = true;
           }
-          return newOpenSets;
+          // For new sets
+          const newSetIndex = newSetsToAppend.findIndex((s) => s.setId === setId);
+          if (newSetIndex !== -1) {
+            newOpenSets[currentSets.length + newSetIndex] = true;
+          }
         });
-      }, 100);
+        return newOpenSets;
+      });
 
-      // Clean up bulk results
+      // Clean up and close the modal
       setBulkResults([]);
+      setShowReviewModal(false);
     },
     [append, convertResultToMatch, getValues, highestSetId, setValue],
   );
@@ -292,7 +329,6 @@ const SetManager = () => {
         }}
         results={bulkResults}
         existingSets={fields}
-        sessionPlayers={players}
         onConfirm={handleBulkReviewConfirm}
         highestSetId={highestSetId}
       />
