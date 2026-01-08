@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import React, { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, GripVertical, AlertCircle, ChevronDown } from "lucide-react";
+import { Plus, AlertCircle, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -60,8 +60,7 @@ interface Props {
  * 1. Review all successfully processed screenshots with detailed match data
  * 2. Assign each match to an existing or new set
  * 3. Create new sets as needed
- * 4. Remove sets that are empty
- * 5. Confirm assignments and update the form state
+ * 4. Confirm assignments and update the form state
  *
  * @param props - Component props
  */
@@ -70,13 +69,7 @@ interface Props {
  * This is remounted when the modal opens with new data via the key prop
  */
 const BulkReviewModalContent = (props: Props) => {
-  const {
-    onClose,
-    results,
-    existingSets,
-    onConfirm,
-    highestSetId,
-  } = props;
+  const { onClose, results, existingSets, onConfirm, highestSetId } = props;
 
   // Initialize set options with existing sets
   const initialSetOptions: SetOption[] = useMemo(
@@ -91,7 +84,7 @@ const BulkReviewModalContent = (props: Props) => {
 
   const [setOptions, setSetOptions] = useState<SetOption[]>(initialSetOptions);
   const [nextNewSetId, setNextNewSetId] = useState(highestSetId + 1);
-  
+
   // Initialize assignments - all unassigned initially
   const [assignments, setAssignments] = useState<MatchAssignment[]>(() =>
     results.map((r) => ({
@@ -99,7 +92,7 @@ const BulkReviewModalContent = (props: Props) => {
       setId: null,
     })),
   );
-  
+
   // Expand all matches by default to show data
   const [expandedMatches, setExpandedMatches] = useState<Set<string>>(
     () => new Set(results.map((r) => r.id)),
@@ -132,32 +125,6 @@ const BulkReviewModalContent = (props: Props) => {
     ]);
     setNextNewSetId((prev) => prev + 1);
   }, [nextNewSetId]);
-
-  /**
-   * Removes a set option (only new sets or empty existing sets)
-   */
-  const handleRemoveSet = useCallback(
-    (setId: number) => {
-      // Check if any matches are assigned to this set
-      const hasAssignments = assignments.some((a) => a.setId === setId);
-      if (hasAssignments) {
-        // Unassign all matches from this set
-        setAssignments((prev) =>
-          prev.map((a) => (a.setId === setId ? { ...a, setId: null } : a)),
-        );
-      }
-
-      setSetOptions((prev) => {
-        const filtered = prev.filter((s) => s.id !== setId);
-        // Renumber the labels
-        return filtered.map((s, i) => ({
-          ...s,
-          label: `Set ${i + 1}${s.isNew ? " (New)" : ""}`,
-        }));
-      });
-    },
-    [assignments],
-  );
 
   /**
    * Updates a match assignment
@@ -269,22 +236,12 @@ const BulkReviewModalContent = (props: Props) => {
                       className="flex items-center justify-between rounded-md border p-2"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical className="text-muted-foreground h-4 w-4" />
                         <span className="text-sm">{setOption.label}</span>
                         <span className="text-muted-foreground text-xs">
                           ({assignedCount} match
                           {assignedCount !== 1 ? "es" : ""})
                         </span>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveSet(setOption.id)}
-                        className="h-7 w-7 p-0 text-red-500 hover:text-red-400"
-                        type="button"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   );
                 })
@@ -357,7 +314,7 @@ const BulkReviewModalContent = (props: Props) => {
                         </div>
 
                         {/* Set Assignment */}
-                        <div className="flex flex-shrink-0 flex-col gap-1">
+                        <div className="flex shrink-0 flex-col gap-1">
                           <Label className="text-xs">Assign to Set</Label>
                           <Select
                             value={assignment?.setId?.toString() ?? ""}
@@ -372,14 +329,22 @@ const BulkReviewModalContent = (props: Props) => {
                               <SelectValue placeholder="Select set..." />
                             </SelectTrigger>
                             <SelectContent>
-                              {setOptionsForSelect.map((setOption) => (
-                                <SelectItem
-                                  key={setOption.id}
-                                  value={setOption.id.toString()}
-                                >
-                                  {setOption.label}
+                              {setOptionsForSelect.length === 0 ? (
+                                <SelectItem disabled value="no-sets">
+                                  <span className="text-muted-foreground">
+                                    No sets available
+                                  </span>
                                 </SelectItem>
-                              ))}
+                              ) : (
+                                setOptionsForSelect.map((setOption) => (
+                                  <SelectItem
+                                    key={setOption.id}
+                                    value={setOption.id.toString()}
+                                  >
+                                    {setOption.label}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
@@ -467,11 +432,7 @@ const BulkReviewModalContent = (props: Props) => {
           <Button variant="outline" onClick={onClose} type="button">
             Cancel
           </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={!canConfirm}
-            type="button"
-          >
+          <Button onClick={handleConfirm} disabled={!canConfirm} type="button">
             Confirm Assignments
           </Button>
         </div>

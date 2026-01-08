@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogFooter,
 } from "@/components/ui/dialog";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   CircleAlert,
@@ -98,7 +98,8 @@ const BulkUploadModal = (props: Props) => {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Map to store actual File objects (not serializable in state)
-  const [fileMap] = useState<Map<string, File>>(new Map());
+  const fileMapRef = useRef<Map<string, File>>(new Map());
+  const fileMap = fileMapRef.current;
 
   /**
    * Handles file selection from the file input
@@ -118,7 +119,7 @@ const BulkUploadModal = (props: Props) => {
 
         const url = URL.createObjectURL(file);
         newFiles.push({
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           fileName: file.name,
           previewUrl: url,
           status: "pending",
@@ -252,7 +253,9 @@ const BulkUploadModal = (props: Props) => {
     }
 
     if (sessionPlayers.length === 0) {
-      toast.warning("Please select session players first", { richColors: true });
+      toast.warning("Please select session players first", {
+        richColors: true,
+      });
       return;
     }
 
@@ -322,7 +325,9 @@ const BulkUploadModal = (props: Props) => {
   const getStatusIcon = (status: BulkProcessingResult["status"]) => {
     switch (status) {
       case "pending":
-        return <div className="h-5 w-5 rounded-full border-2 border-gray-400" />;
+        return (
+          <div className="h-5 w-5 rounded-full border-2 border-gray-400" />
+        );
       case "processing":
         return <LoaderCircle className="h-5 w-5 animate-spin text-blue-500" />;
       case "success":
@@ -337,7 +342,8 @@ const BulkUploadModal = (props: Props) => {
   const pendingCount = files.filter((f) => f.status === "pending").length;
   const processingCount = files.filter((f) => f.status === "processing").length;
   const completedCount = files.filter(
-    (f) => f.status === "success" || f.status === "check" || f.status === "failed",
+    (f) =>
+      f.status === "success" || f.status === "check" || f.status === "failed",
   ).length;
   const successCount = files.filter(
     (f) => f.status === "success" || f.status === "check",
