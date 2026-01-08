@@ -157,67 +157,93 @@ const BulkUploadModal = (props: Props) => {
   );
 
   /**
-   * Processes a single file using the vision API
+   * Updates a single file's status in state
    */
-  const processFile = async (
-    fileResult: BulkProcessingResult,
-  ): Promise<BulkProcessingResult> => {
-    const file = fileMap.get(fileResult.id);
-    if (!file) {
-      return {
-        ...fileResult,
-        status: "failed",
-        message: "File not found",
-      };
-    }
-
-    const base64Content = await getFileAsBase64(file);
-    if (!base64Content) {
-      return {
-        ...fileResult,
-        status: "failed",
-        message: "Failed to read file",
-      };
-    }
-
-    const result = await handleAnalyzeBtnClick(
-      base64Content,
-      sessionPlayers,
-      gameName,
-    );
-
-    switch (result.status) {
-      case VisionResultCodes.Success:
-        return {
-          ...fileResult,
-          status: "success",
-          message: "Analysis completed successfully",
-          data: result.data,
-        };
-      case VisionResultCodes.CheckRequest:
-        return {
-          ...fileResult,
-          status: "check",
-          message: result.message || "Analysis requires review",
-          data: result.data,
-        };
-      case VisionResultCodes.Failed:
-        return {
-          ...fileResult,
-          status: "failed",
-          message: result.message || "Analysis failed",
-        };
-      default:
-        return {
-          ...fileResult,
-          status: "failed",
-          message: "Unknown error occurred",
-        };
-    }
-  };
+  const updateFileStatus = useCallback(
+    (id: string, updates: Partial<BulkProcessingResult>) => {
+      setFiles((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, ...updates } : f)),
+      );
+    },
+    [],
+  );
 
   /**
-   * Processes all pending files in parallel
+   * Processes a single file using the vision API and updates status in real-time
+   */
+  const processFileWithStatusUpdate = useCallback(
+    async (fileResult: BulkProcessingResult): Promise<BulkProcessingResult> => {
+      const file = fileMap.get(fileResult.id);
+      if (!file) {
+        const result = {
+          ...fileResult,
+          status: "failed" as const,
+          message: "File not found",
+        };
+        updateFileStatus(fileResult.id, result);
+        return result;
+      }
+
+      const base64Content = await getFileAsBase64(file);
+      if (!base64Content) {
+        const result = {
+          ...fileResult,
+          status: "failed" as const,
+          message: "Failed to read file",
+        };
+        updateFileStatus(fileResult.id, result);
+        return result;
+      }
+
+      const apiResult = await handleAnalyzeBtnClick(
+        base64Content,
+        sessionPlayers,
+        gameName,
+      );
+
+      let processedResult: BulkProcessingResult;
+
+      switch (apiResult.status) {
+        case VisionResultCodes.Success:
+          processedResult = {
+            ...fileResult,
+            status: "success",
+            message: "Analysis completed successfully",
+            data: apiResult.data,
+          };
+          break;
+        case VisionResultCodes.CheckRequest:
+          processedResult = {
+            ...fileResult,
+            status: "check",
+            message: apiResult.message || "Analysis requires review",
+            data: apiResult.data,
+          };
+          break;
+        case VisionResultCodes.Failed:
+          processedResult = {
+            ...fileResult,
+            status: "failed",
+            message: apiResult.message || "Analysis failed",
+          };
+          break;
+        default:
+          processedResult = {
+            ...fileResult,
+            status: "failed",
+            message: "Unknown error occurred",
+          };
+      }
+
+      // Update state immediately when this file completes
+      updateFileStatus(fileResult.id, processedResult);
+      return processedResult;
+    },
+    [fileMap, sessionPlayers, gameName, updateFileStatus],
+  );
+
+  /**
+   * Processes all pending files in parallel with individual status updates
    */
   const handleProcessAll = async () => {
     if (files.length === 0) {
@@ -230,27 +256,29 @@ const BulkUploadModal = (props: Props) => {
       return;
     }
 
+    // IMPORTANT: Capture pending files BEFORE updating state to avoid race condition
+    const pendingFiles = files.filter((f) => f.status === "pending");
+
+    if (pendingFiles.length === 0) {
+      toast.warning("No pending files to process", { richColors: true });
+      return;
+    }
+
     setIsProcessing(true);
 
-    // Set all files to processing status
+    // Mark only the captured pending files as processing
+    const pendingIds = new Set(pendingFiles.map((f) => f.id));
     setFiles((prev) =>
       prev.map((f) =>
-        f.status === "pending"
+        pendingIds.has(f.id)
           ? { ...f, status: "processing" as const, message: "Processing..." }
           : f,
       ),
     );
 
-    // Process all pending files in parallel
-    const pendingFiles = files.filter((f) => f.status === "pending" || f.status === "processing");
-    const results = await Promise.all(pendingFiles.map(processFile));
-
-    // Update files with results
-    setFiles((prev) =>
-      prev.map((f) => {
-        const result = results.find((r) => r.id === f.id);
-        return result || f;
-      }),
+    // Process all files in parallel - each will update its own status when done
+    const results = await Promise.all(
+      pendingFiles.map(processFileWithStatusUpdate),
     );
 
     setIsProcessing(false);
@@ -308,6 +336,12 @@ const BulkUploadModal = (props: Props) => {
 
   const pendingCount = files.filter((f) => f.status === "pending").length;
   const processingCount = files.filter((f) => f.status === "processing").length;
+  const completedCount = files.filter(
+    (f) => f.status === "success" || f.status === "check" || f.status === "failed",
+  ).length;
+  const successCount = files.filter(
+    (f) => f.status === "success" || f.status === "check",
+  ).length;
 
   return (
     <Dialog
@@ -400,8 +434,20 @@ const BulkUploadModal = (props: Props) => {
 
         <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
           <span className="text-muted-foreground text-sm">
-            {files.length} file{files.length !== 1 ? "s" : ""} selected
-            {processingCount > 0 && ` (${processingCount} processing)`}
+            {isProcessing ? (
+              <>
+                {completedCount}/{processingCount + completedCount} completed
+                {successCount > 0 && (
+                  <span className="ml-1 text-green-500">
+                    ({successCount} successful)
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                {files.length} file{files.length !== 1 ? "s" : ""} selected
+              </>
+            )}
           </span>
           <div className="flex gap-2">
             <Button
@@ -424,7 +470,7 @@ const BulkUploadModal = (props: Props) => {
               {isProcessing ? (
                 <>
                   <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
+                  Processing ({processingCount} remaining)
                 </>
               ) : (
                 `Process ${pendingCount} File${pendingCount !== 1 ? "s" : ""}`
