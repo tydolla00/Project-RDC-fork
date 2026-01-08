@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import MatchManager from "./MatchManager";
 import PlayerSelector from "./PlayerSelector";
@@ -11,14 +11,19 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
-import { FormValues } from "../../_utils/form-helpers";
+import { FormValues, Match } from "../../_utils/form-helpers";
 import WinnerDisplay from "./WinnerDisplay";
 import { FormField, FormItem, FormMessage } from "@/components/ui/form";
+import BulkUploadModal, { BulkProcessingResult } from "./BulkUploadModal";
+import BulkReviewModal from "./BulkReviewModal";
+import { Stat, VisionPlayer } from "@/lib/visionTypes";
 
 const SetManager = () => {
   const {
     watch,
     control,
+    getValues,
+    setValue,
     formState: { errors },
   } = useFormContext<FormValues>();
 
@@ -29,6 +34,10 @@ const SetManager = () => {
 
   const [openSets, setOpenSets] = useState<boolean[]>(fields.map(() => false));
   const [highestSetId, setHighestSetId] = useState(fields.length);
+  
+  // Bulk upload state
+  const [bulkResults, setBulkResults] = useState<BulkProcessingResult[]>([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   const toggleSet = (index: number) => {
     setOpenSets((prevOpenSets) =>
@@ -55,6 +64,135 @@ const SetManager = () => {
   };
 
   const players = watch(`players`);
+  const gameName = watch(`game`);
+
+  /**
+   * Processes vision players into form-compatible player sessions
+   */
+  const processTeamPlayers = useCallback((teamPlayers: VisionPlayer[]) => {
+    return teamPlayers.map((player) => {
+      const formattedStats = player.stats.map((stat: Stat) => ({
+        statId: stat.statId,
+        stat: stat.stat,
+        statValue: stat.statValue,
+      })) as Match["playerSessions"][number]["playerStats"];
+
+      return {
+        playerId: player?.playerId || 0,
+        playerSessionName: player?.name || "Unknown Player",
+        playerStats: formattedStats,
+      };
+    });
+  }, []);
+
+  /**
+   * Converts a BulkProcessingResult to a form-compatible Match object
+   */
+  const convertResultToMatch = useCallback(
+    (result: BulkProcessingResult): Match | null => {
+      if (!result.data) return null;
+
+      const playerSessions = processTeamPlayers(result.data.players);
+
+      const formattedWinners = (result.data.winner || []).map(
+        (player: VisionPlayer) => ({
+          playerId: player?.playerId || 0,
+          playerName: player?.name,
+        }),
+      );
+
+      return {
+        matchWinners: formattedWinners,
+        playerSessions: playerSessions,
+      } as Match;
+    },
+    [processTeamPlayers],
+  );
+
+  /**
+   * Handles bulk processing completion from BulkUploadModal
+   */
+  const handleBulkProcessingComplete = useCallback(
+    (results: BulkProcessingResult[]) => {
+      setBulkResults(results);
+      setShowReviewModal(true);
+    },
+    [],
+  );
+
+  /**
+   * Handles confirmation from BulkReviewModal
+   * Creates new sets and adds matches to the appropriate sets
+   */
+  const handleBulkReviewConfirm = useCallback(
+    (
+      assignments: Map<number, BulkProcessingResult[]>,
+      newSetIds: number[],
+    ) => {
+      const currentSets = getValues("sets");
+      let updatedHighestSetId = highestSetId;
+
+      // First, create any new sets that were added during review
+      newSetIds.forEach((newSetId) => {
+        // Check if this set already exists
+        const existingSetIndex = currentSets.findIndex(
+          (s) => s.setId === newSetId,
+        );
+        if (existingSetIndex === -1) {
+          append({
+            setId: newSetId,
+            matches: [],
+            setWinners: [],
+          });
+          if (newSetId > updatedHighestSetId) {
+            updatedHighestSetId = newSetId;
+          }
+        }
+      });
+
+      // Update the highest set ID
+      setHighestSetId(updatedHighestSetId);
+
+      // Now add matches to the appropriate sets
+      // We need to get the updated sets after appending
+      setTimeout(() => {
+        const updatedSets = getValues("sets");
+
+        assignments.forEach((results, setId) => {
+          const setIndex = updatedSets.findIndex((s) => s.setId === setId);
+          if (setIndex === -1) return;
+
+          const matches = results
+            .map(convertResultToMatch)
+            .filter((m): m is Match => m !== null);
+
+          const currentMatches = getValues(`sets.${setIndex}.matches`) || [];
+          setValue(`sets.${setIndex}.matches`, [...currentMatches, ...matches]);
+        });
+
+        // Update openSets to show all modified sets
+        setOpenSets((prev) => {
+          const newOpenSets = [...prev];
+          assignments.forEach((_, setId) => {
+            const updatedSets = getValues("sets");
+            const setIndex = updatedSets.findIndex((s) => s.setId === setId);
+            if (setIndex !== -1 && setIndex < newOpenSets.length) {
+              newOpenSets[setIndex] = true;
+            }
+          });
+          // Ensure array length matches sets
+          while (newOpenSets.length < getValues("sets").length) {
+            newOpenSets.push(true);
+          }
+          return newOpenSets;
+        });
+      }, 100);
+
+      // Clean up bulk results
+      setBulkResults([]);
+    },
+    [append, convertResultToMatch, getValues, highestSetId, setValue],
+  );
 
   useEffect(() => {
     document.documentElement.scrollTop = 0; // Scroll to top when a new set is added
@@ -130,7 +268,12 @@ const SetManager = () => {
             </Collapsible>
           );
         })}
-      <div className="ml-auto w-fit">
+      <div className="flex justify-between">
+        <BulkUploadModal
+          onBulkProcessingComplete={handleBulkProcessingComplete}
+          sessionPlayers={players}
+          gameName={gameName}
+        />
         <Button
           type="button"
           onClick={() => handleAddSet()}
@@ -139,6 +282,20 @@ const SetManager = () => {
           Add Set
         </Button>
       </div>
+
+      {/* Bulk Review Modal */}
+      <BulkReviewModal
+        open={showReviewModal}
+        onClose={() => {
+          setShowReviewModal(false);
+          setBulkResults([]);
+        }}
+        results={bulkResults}
+        existingSets={fields}
+        sessionPlayers={players}
+        onConfirm={handleBulkReviewConfirm}
+        highestSetId={highestSetId}
+      />
     </div>
   );
 };
