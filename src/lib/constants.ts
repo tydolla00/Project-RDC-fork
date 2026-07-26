@@ -33,12 +33,13 @@ export const getGamesNav = async () => {
     desc?: string;
   }[] = games.data.map((game) => {
     const gameKey = game.gameName.replace(/\s/g, "").toLowerCase() as GamesEnum;
+    const image = gameImages[gameKey];
     return {
       alt: game.gameName,
       desc: gamesNav.get(gameKey) || "",
       name: game.gameName,
       url: `/games/${gameKey}`,
-      src: `/images/${gameImages[gameKey]}`,
+      src: image ? `/images/${image}` : undefined,
     };
   });
   navGames.push({ name: "Browse all games", url: "/games" });

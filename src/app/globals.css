@@ -12,6 +12,9 @@
   --animate-float-up: floatup 5s ease-out both alternate;
   --animate-sink-down: sink-down 2s linear forwards;
   --animate-sink-up: sink-up 1s linear forwards;
+  --animate-stats-marquee: stats-marquee 32s linear infinite;
+  --animate-compare-stat-drop: compare-stat-drop 280ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
+  --animate-compare-hp-fill: compare-hp-fill 450ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -59,6 +62,35 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  @keyframes stats-marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  @keyframes compare-stat-drop {
+    from {
+      opacity: 0;
+      transform: translateY(-14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes compare-hp-fill {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
 
   @keyframes accordion-down {
     from {

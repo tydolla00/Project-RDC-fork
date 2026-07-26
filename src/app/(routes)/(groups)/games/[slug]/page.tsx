@@ -1,17 +1,11 @@
 "use cache";
-import { getAllGames, getWinsPerPlayer } from "prisma/lib/games";
+import { Suspense } from "react";
+import { getAllGames } from "prisma/lib/games";
 import { getAllSessionsByGame } from "prisma/lib/admin";
-import Mariokart from "./_components/games/mariokart";
-import CallOfDuty from "./_components/games/callofduty";
-import RocketLeague from "./_components/games/rocketleague";
-import Speedrunners from "./_components/games/speedrunners";
-import LethalCompany from "./_components/games/lethalcompany";
+import type { getAllMembers } from "prisma/lib/members";
 import { gameImages, GamesEnum } from "@/lib/constants";
-import { getAllMembers } from "prisma/lib/members";
-import { NoMembers } from "../../members/_components/members";
-import { calcWinsPerPlayer } from "./_helpers/stats";
-import { GameDashboard } from "./_components/dashboard/game-dashboard";
-import { assembleDashboardData } from "./_helpers/dashboard";
+import { assembleGameViewModel } from "./_helpers/game-view-model";
+import { GameStats } from "./_components/stats/game-stats";
 
 export type Members = NonNullable<
   Awaited<ReturnType<typeof getAllMembers>>["data"]
@@ -34,12 +28,10 @@ export async function generateStaticParams() {
 }
 
 /**
- * Renders the game dashboard page with banner stats, MVP profile,
- * leaderboard, replay library, replay viewer, recent matches,
- * and game-specific stat charts.
+ * Renders interactive game stats for a single game.
  *
  * @param props - Contains route params with the game slug.
- * @returns The game dashboard page JSX element.
+ * @returns The game stats page.
  */
 export default async function Page({
   params,
@@ -54,96 +46,46 @@ export default async function Page({
 
   const game = games.data.find(
     (g) => g.gameName.replace(/\s/g, "").toLowerCase() === slug,
-  )!;
+  );
 
-  const gameName = slug as GamesEnum;
-  const gameImagePath = gameImages[gameName];
+  if (!game) return <NoGames />;
+
+  const gameImagePath = gameImages[slug as GamesEnum];
   const gameImage = gameImagePath ? `/images/${gameImagePath}` : "";
 
-  const [sessionsResult, membersResult, winsResult] = await Promise.all([
-    getAllSessionsByGame(game.gameId),
-    getAllMembers(),
-    getWinsPerPlayer(game.gameId),
-  ]);
-
+  const sessionsResult = await getAllSessionsByGame(game.gameId);
   const sessionsData =
     sessionsResult.success && sessionsResult.data ? sessionsResult.data : [];
-  const winsData =
-    winsResult.success && winsResult.data
-      ? winsResult.data
-      : { sessions: [] };
-  const winsPerPlayer = calcWinsPerPlayer(winsData);
 
-  if (!membersResult.success || !membersResult.data) return <NoMembers />;
-
-  const dashboardData = assembleDashboardData(
+  const viewModel = assembleGameViewModel(
     sessionsData,
     game.gameName,
     slug,
     gameImage,
   );
 
-  let gameComponent: React.ReactNode;
-
-  switch (gameName) {
-    case GamesEnum.MarioKart8:
-      gameComponent = (
-        <Mariokart
-          game={game}
-          members={membersResult.data}
-          winsPerPlayer={winsPerPlayer}
-        />
-      );
-      break;
-    case GamesEnum.CallOfDuty:
-      gameComponent = (
-        <CallOfDuty
-          game={game}
-          members={membersResult.data}
-          winsPerPlayer={winsPerPlayer}
-        />
-      );
-      break;
-    case GamesEnum.RocketLeague:
-      gameComponent = (
-        <RocketLeague
-          game={game}
-          members={membersResult.data}
-          winsPerPlayer={winsPerPlayer}
-        />
-      );
-      break;
-    case GamesEnum.SpeedRunners:
-      gameComponent = (
-        <Speedrunners
-          game={game}
-          members={membersResult.data}
-          winsPerPlayer={winsPerPlayer}
-        />
-      );
-      break;
-    case GamesEnum.LethalCompany:
-      gameComponent = (
-        <LethalCompany
-          game={game}
-          members={membersResult.data}
-          winsPerPlayer={winsPerPlayer}
-        />
-      );
-      break;
-  }
-
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <GameDashboard data={dashboardData}>{gameComponent}</GameDashboard>
-    </div>
+    <Suspense fallback={<StatsFallback />}>
+      <GameStats data={viewModel} />
+    </Suspense>
   );
 }
 
 /**
- * Fallback component when no games are found.
+ * Displays a neutral shell while the client hydrates URL state.
  *
- * @returns JSX element showing a "no games found" message.
+ * @returns A full-width loading placeholder.
+ */
+function StatsFallback() {
+  return (
+    <div className="bg-background min-h-[720px] animate-pulse motion-reduce:animate-none" />
+  );
+}
+
+/**
+ * Fallback when no games are found.
+ *
+ * @returns Empty-state message.
  */
 const NoGames = () => (
   <div className="m-16">

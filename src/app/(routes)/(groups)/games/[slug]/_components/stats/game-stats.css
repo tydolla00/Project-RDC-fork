@@ -1,0 +1,43 @@
+/**
+ * Game stats surface tokens (charcoal + blue accent).
+ * Scope under .game-stats so Tailwind utilities like text-(--bc-ink) resolve.
+ */
+.game-stats {
+  --bc-bg: hsl(0 0% 8.6%);
+  --bc-surface: hsl(0 0% 6.6%);
+  --bc-surface-soft: hsl(240 3.7% 12%);
+  --bc-ink: hsl(0 0% 98%);
+  --bc-muted: hsl(240 5% 64.9%);
+  --bc-quiet: hsl(240 4% 46%);
+  --bc-line: hsl(240 3.7% 15.9%);
+  --bc-line-soft: hsl(240 3.7% 13%);
+  --bc-accent: hsl(220 70% 56%);
+  --bc-accent-hover: hsl(220 70% 64%);
+  --bc-accent-soft: hsl(220 40% 14%);
+  --bc-accent-ink: hsl(0 0% 98%);
+  --bc-heat-high: hsl(220 70% 56%);
+  --bc-heat-high-ink: hsl(0 0% 98%);
+  --bc-heat-mid: hsl(220 45% 32%);
+  --bc-heat-mid-ink: hsl(0 0% 98%);
+  --bc-heat-low: hsl(220 30% 18%);
+  --bc-heat-wash: hsl(240 3.7% 12%);
+  --bc-bar-track: hsl(240 3.7% 15.9%);
+  --bc-bar-muted: hsl(240 5% 32%);
+  --bc-ticker-bg: hsl(0 0% 6.6%);
+  --bc-ticker-ink: hsl(240 5% 74%);
+  --bc-ticker-accent: hsl(220 70% 64%);
+  --bc-hero-scrim:
+    linear-gradient(90deg, hsla(0, 0%, 6.6%, 0.92), hsla(0, 0%, 6.6%, 0.35)),
+    linear-gradient(0deg, hsla(0, 0%, 6.6%, 0.95), transparent 55%);
+  --bc-hero-ink: hsl(0 0% 98%);
+  --bc-hero-muted: hsla(0, 0%, 98%, 0.55);
+  --bc-hero-accent: hsl(220 70% 72%);
+  --bc-shadow: none;
+
+  color: var(--bc-ink);
+  background: var(--bc-bg);
+}
+
+.game-stats-hero-scrim {
+  background-image: var(--bc-hero-scrim);
+}
